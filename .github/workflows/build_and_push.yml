@@ -1,0 +1,94 @@
+# .github/workflows/release.yml
+
+name: Go Cross-Platform Release
+
+# 触发器：
+on:
+  # 1. 自动触发：当推送 v*.*.* 格式的标签时
+  push:
+    tags:
+      - 'v*.*.*'
+  
+  # 2. 手动触发：允许从 Actions 页面手动运行此工作流
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag to create for the release (e.g., v1.0.1)'
+        required: true
+        type: string
+
+# 环境变量，用于统一设置二进制文件名
+env:
+  BINARY_NAME: mcp-language-server
+
+jobs:
+  # 构建 Job：与之前相同，为所有目标平台并行构建
+  build:
+    name: Build for ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-22.04-arm64
+          - goos: darwin
+            goarch: amd64
+            runner: macos-13
+          - goos: darwin
+            goarch: arm64
+            runner: macos-14
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build Binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -v -o ${{ env.BINARY_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }} .
+      
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BINARY_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: ${{ env.BINARY_NAME }}-${{ matrix.goos }}-${{ matrix.goarch }}
+
+  # 发布 Job：创建 Release
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+      
+      - name: List downloaded files for verification
+        run: ls -R artifacts/
+
+      - name: Create Release and Upload Assets
+        uses: ncipollo/release-action@v1
+        with:
+          # **关键改动**
+          # 动态设置标签名。
+          # 如果是手动触发，使用输入的 `tag` 值。
+          # 如果是推送标签触发，使用 Git 的 `ref_name`。
+          tag: ${{ inputs.tag || github.ref_name }}
+          artifacts: "artifacts/*/*"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
