@@ -35,7 +35,7 @@ jobs:
             runner: ubuntu-latest
           - goos: linux
             goarch: arm64
-            runner: ubuntu-22.04-arm64
+            runner: ubuntu-22.04-arm
           - goos: darwin
             goarch: amd64
             runner: macos-13
